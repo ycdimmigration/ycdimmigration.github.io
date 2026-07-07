@@ -1,0 +1,49 @@
+name: Sync Express Entry Draws
+
+on:
+  schedule:
+    - cron: '0 20 * * *' # Every day at 8 PM UTC
+  workflow_dispatch: # Allows manual trigger
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Create Data Directory
+        run: mkdir -p data
+
+      - name: Fetch Latest JSON
+        run: |
+          curl -s -L -A "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36" \
+            "https://www.canada.ca/content/dam/ircc/documents/json/ee_rounds_123_en.json" \
+            -o temp_ee_rounds.json
+
+      - name: Compare and Update
+        run: |
+          if [ ! -f data/ee_rounds.json ]; then
+            mv temp_ee_rounds.json data/ee_rounds.json
+            echo "CHANGED=true" >> $GITHUB_ENV
+          else
+            if ! cmp -s temp_ee_rounds.json data/ee_rounds.json; then
+              mv temp_ee_rounds.json data/ee_rounds.json
+              echo "CHANGED=true" >> $GITHUB_ENV
+            else
+              echo "CHANGED=false" >> $GITHUB_ENV
+              rm temp_ee_rounds.json
+            fi
+          fi
+
+      - name: Commit and Push changes
+        if: env.CHANGED == 'true'
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/ee_rounds.json
+          git commit -m "chore: update Express Entry draws data"
+          git push
